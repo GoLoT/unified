@@ -1,4 +1,6 @@
 #include "Combat.hpp"
+#include "Services/Config/Config.hpp"
+
 #include "API/C2DA.hpp"
 #include "API/CAppManager.hpp"
 #include "API/Constants.hpp"
@@ -6,6 +8,7 @@
 #include "API/CNWBaseItemArray.hpp"
 #include "API/CNWCCMessageData.hpp"
 #include "API/CNWRules.hpp"
+#include "API/CNWSAreaOfEffectObject.hpp"
 #include "API/CNWSCreature.hpp"
 #include "API/CNWSCreatureStats.hpp"
 #include "API/CNWSCombatRound.hpp"
@@ -24,9 +27,11 @@ namespace Dangerous
 using namespace NWNXLib;
 using namespace NWNXLib::API;
 
-Combat::Combat(ViewPtr<Services::HooksProxy> hooker)
+Combat::Combat(ViewPtr<Services::ProxyServiceList> &services)
 {
-    hooker->RequestExclusiveHook<API::Functions::CNWSCreature__ResolveAttackRoll>
+    ViewPtr<Services::HooksProxy> hooker = services->m_hooks;
+    m_overrideEnhancementBehavior = services->m_config->Get<bool>("PREVENT_AB_BYPASSING_REDUCTION", false);
+    /*hooker->RequestExclusiveHook<API::Functions::CNWSCreature__ResolveAttackRoll>
         (&CNWSCreature__ResolveAttackRoll);
     hooker->RequestExclusiveHook<API::Functions::CNWSCreatureStats__GetCriticalHitRoll>
         (&CNWSCreatureStats__GetCriticalHitRoll);
@@ -65,7 +70,12 @@ Combat::Combat(ViewPtr<Services::HooksProxy> hooker)
     hooker->RequestExclusiveHook<API::Functions::CNWSCreatureStats__GetTotalACSkillMod>
         (&CNWSCreatureStats__GetTotalACSkillMod);
     hooker->RequestExclusiveHook<API::Functions::CNWSCreatureStats__GetDEXMod>
-        (&CNWSCreatureStats__GetDEXMod);
+        (&CNWSCreatureStats__GetDEXMod);*/
+    if(m_overrideEnhancementBehavior)
+    {
+        hooker->RequestExclusiveHook<API::Functions::CNWSCreature__GetWeaponPower>
+            (&CNWSCreature__GetWeaponPower);
+    }
 }
 
 int Combat::GetSneakAttackDice(CNWSCreature *thisPtr)
@@ -225,7 +235,7 @@ void Combat::CNWSCreature__ResolveAttackRoll(NWNXLib::API::CNWSCreature *thisPtr
     auto nAC = !pTargetCreature ? 0 : pTargetCreature->m_pStats->GetArmorClassVersus(thisPtr, 0);
     bool bHit = nModifiedRoll >= nAC;
 
-    //Test deflect / epic dodge
+    //Test deflect / miss chance / concealment
     if (thisPtr->ResolveDefensiveEffects(pTarget, bHit))
         return;
 
@@ -662,7 +672,6 @@ void Combat::CNWSCreature__ResolvePostRangedDamage(CNWSCreature *thisPtr, CNWSOb
 
     auto pCombatRound = thisPtr->m_pcCombatRound;
     auto pCurrentAttack = pCombatRound->GetAttack(pCombatRound->m_nCurrentAttack);
-    auto nAttackResult = pCurrentAttack->m_nAttackResult;
 
     CNWSCreature *pTargetCreature = Utils::AsNWSCreature(pTarget);
     auto nTotalDamage = pCurrentAttack->GetTotalDamage(1);
@@ -1387,7 +1396,6 @@ int32_t Combat::CNWSCreatureStats__GetDamageBonus(NWNXLib::API::CNWSCreatureStat
     auto pCombatData = thisPtr->m_pBaseCreature->m_pcCombatRound;
     auto pAttackData = pCombatData->GetAttack(pCombatData->m_nCurrentAttack);
 
-    CNWSItem *pItem = nullptr;
     int nStrengthMod = thisPtr->m_nStrengthModifier;
     if (!bOffhand)
     {
@@ -1538,28 +1546,26 @@ int32_t Combat::CNWSObject__DoDamageImmunity(NWNXLib::API::CNWSObject *thisPtr, 
         return nDamage;
     }
 
-    CNWCCMessageData *pMessage = new CNWCCMessageData();
-    CNWCCMessageData *pMessage2 = new CNWCCMessageData();
+    //CNWCCMessageData *pMessage = new CNWCCMessageData();
+    //CNWCCMessageData *pMessage2 = new CNWCCMessageData();
+    std::unique_ptr<CNWCCMessageData> pMessage = std::make_unique<CNWCCMessageData>();
+    std::unique_ptr<CNWCCMessageData> pMessage2 = std::make_unique<CNWCCMessageData>();
     pMessage->SetObjectID(0, thisPtr->m_idSelf);
     pMessage->SetInteger(0, 0x3e);
     pMessage->SetInteger(1, nReducedDamage);
     pMessage->SetInteger(2, nFlags);
-    pMessage->CopyTo(pMessage2);
+    pMessage->CopyTo(pMessage2.get());
 
     auto pCreature = Utils::AsNWSCreature(thisPtr);
     if (pCreature)
-        pCreature->SendFeedbackMessage(0x3e, pMessage, nullptr);
-    else
-        delete pMessage;
+        pCreature->SendFeedbackMessage(0x3e, pMessage.release(), nullptr);
+    //else
+    //    delete pMessage;
 
     if (pAttacker)
-    {
-        pAttacker->SendFeedbackMessage(0x3e, pMessage2, nullptr);
-    }
-    else
-    {
-        delete pMessage2;
-    }
+        pAttacker->SendFeedbackMessage(0x3e, pMessage2.release(), nullptr);
+    //else
+    //    delete pMessage2;
 
     return nDamage;
 }
@@ -1662,20 +1668,23 @@ int32_t Combat::CNWSObject__DoDamageReduction(NWNXLib::API::CNWSObject *thisPtr,
                     return nDamage > 0 ? nDamage : 0;
                 }
 
-                auto pMessage = new CNWCCMessageData();
-                auto pMessage2 = new CNWCCMessageData();
+
+                //auto pMessage = new CNWCCMessageData();
+                //auto pMessage2 = new CNWCCMessageData();
+                std::unique_ptr<CNWCCMessageData> pMessage = std::make_unique<CNWCCMessageData>();
+                std::unique_ptr<CNWCCMessageData> pMessage2 = std::make_unique<CNWCCMessageData>();
                 pMessage->SetObjectID(0, thisPtr->m_idSelf);
                 pMessage->SetInteger(1, nReducedAmount);
-                pMessage->CopyTo(pMessage2);
+                pMessage->CopyTo(pMessage2.get());
 
                 if (pCreature)
-                    pCreature->SendFeedbackMessage(0x40, pMessage, nullptr);
-                else
-                    delete pMessage;
+                    pCreature->SendFeedbackMessage(0x40, pMessage.release(), nullptr);
+                //else
+                //    delete pMessage;
                 if (pAttacker)
-                    pAttacker->SendFeedbackMessage(0x40, pMessage2, nullptr);
-                else
-                    delete pMessage2;
+                    pAttacker->SendFeedbackMessage(0x40, pMessage2.release(), nullptr);
+                //else
+                //    delete pMessage2;
 
                 return nDamage > 0 ? nDamage : 0;
             }
@@ -1750,25 +1759,27 @@ int32_t Combat::CNWSObject__DoDamageReduction(NWNXLib::API::CNWSObject *thisPtr,
         }
         else
         {
-            CNWCCMessageData *pMessage = new CNWCCMessageData();
-            CNWCCMessageData *pMessage2 = new CNWCCMessageData();
+            std::unique_ptr<CNWCCMessageData> pMessage = std::make_unique<CNWCCMessageData>();
+            std::unique_ptr<CNWCCMessageData> pMessage2 = std::make_unique<CNWCCMessageData>();
+            //CNWCCMessageData *pMessage = new CNWCCMessageData();
+            //CNWCCMessageData *pMessage2 = new CNWCCMessageData();
             pMessage->SetObjectID(0, thisPtr->m_idSelf);
             int nReduced = nReduction < nDamage ? nReduction : nDamage;
 
             if (nRemainingEffectReduction == 0)
             {
                 pMessage->SetInteger(1, nReduced);
-                pMessage->CopyTo(pMessage2);
+                pMessage->CopyTo(pMessage2.get());
 
                 if (pCreature)
-                    pCreature->SendFeedbackMessage(0x40, pMessage, nullptr);
-                else
-                    delete pMessage;
+                    pCreature->SendFeedbackMessage(0x40, pMessage.release(), nullptr);
+                //else
+                //    delete pMessage;
 
                 if (pAttacker)
-                    pAttacker->SendFeedbackMessage(0x40, pMessage2, nullptr);
-                else
-                    delete pMessage2;
+                    pAttacker->SendFeedbackMessage(0x40, pMessage2.release(), nullptr);
+                //else
+                //    delete pMessage2;
             }
             else
             {
@@ -1782,17 +1793,17 @@ int32_t Combat::CNWSObject__DoDamageReduction(NWNXLib::API::CNWSObject *thisPtr,
                     pMessage->SetInteger(1, nReduction);
                     pMessage->SetInteger(2, nRemainingEffectReduction - nReduction);
                 }
-                pMessage->CopyTo(pMessage2);
+                pMessage->CopyTo(pMessage2.get());
 
                 if (pCreature)
-                    pCreature->SendFeedbackMessage(0x43, pMessage, nullptr);
-                else
-                    delete pMessage;
+                    pCreature->SendFeedbackMessage(0x43, pMessage.release(), nullptr);
+                //else
+                //    delete pMessage;
 
                 if (pAttacker)
-                    pAttacker->SendFeedbackMessage(0x43, pMessage2, nullptr);
-                else
-                    delete pMessage2;
+                    pAttacker->SendFeedbackMessage(0x43, pMessage2.release(), nullptr);
+                //else
+                //    delete pMessage2;
             }
         }
     }
@@ -1917,6 +1928,7 @@ char Combat::CNWSCreatureStats__GetACNaturalBase(CNWSCreatureStats *thisPtr, int
     if (thisPtr->HasFeat(Constants::Feat::EpicArmorSkin))
         nNaturalAC += 2;
 
+    //TODO: Add changes from x64 regarding disciple/pale master AC when x64 hits stable
     nClassIndex = thisPtr->GetIsClass(Constants::ClassType::Palemaster);
     if (nClassIndex < thisPtr->m_nNumMultiClasses && thisPtr->HasFeat(Constants::Feat::BoneSkin2))
         nNaturalAC += thisPtr->m_ClassInfo[nClassIndex].m_nLevel / 2 + 2;
@@ -1967,5 +1979,171 @@ char Combat::CNWSCreatureStats__GetDEXMod(CNWSCreatureStats *thisPtr, int32_t bA
     }
 
     return nDexAC;
+}
+
+int32_t Combat::CNWSCreature__GetWeaponPower(NWNXLib::API::CNWSCreature* thisPtr, CNWSObject* pTarget,
+    int32_t bOffhand) {
+
+    if (thisPtr->m_appliedEffects.num < 1)
+        return 0;
+
+    auto pCombatRound = thisPtr->m_pcCombatRound;
+    auto pCurrentAttack = pCombatRound->GetAttack(pCombatRound->m_nCurrentAttack);
+    unsigned char nAlignmentLaw = 0xFF, nAlignmentGood = 0xFF;
+    uint16_t nRace = 0xFFFF;
+    int32_t nWeaponPower = 0;
+
+    auto nWeaponAttackType = pCurrentAttack->m_nWeaponAttackType;
+    if (nWeaponAttackType == 0)
+        nWeaponAttackType = bOffhand == 0 ? 1 : 2;
+
+    CNWSItem* pAttackWeapon = nullptr;
+    if(m_overrideEnhancementBehavior) {
+        if (bOffhand) {
+            pAttackWeapon = GetDualwieldWeapon(thisPtr->m_pStats->m_pBaseCreature);
+        } else {
+            pAttackWeapon = pCombatRound->GetCurrentAttackWeapon(0);
+        }
+    }
+
+    if (pTarget) {
+        CNWSCreature* pTargetCreature = Utils::AsNWSCreature(pTarget);
+        if (!pTargetCreature) {
+            auto pTargetAoe = Utils::AsNWSAreaOfEffectObject(pTarget);
+            if (!pTargetAoe ||
+                !(pTargetCreature = Globals::AppManager()->m_pServerExoApp->GetCreatureByGameObjectID(pTargetAoe->m_oidCreator)) ||
+                !pTargetCreature->m_pStats) {
+
+                pTargetCreature = nullptr;
+            }
+        }
+
+        if(pTargetCreature) {
+            nRace = pTargetCreature->m_pStats->m_nRace;
+            nAlignmentLaw = pTargetCreature->m_pStats->GetSimpleAlignmentLawChaos();
+            nAlignmentGood = pTargetCreature->m_pStats->GetSimpleAlignmentGoodEvil();
+        }
+    }
+
+    if(!m_overrideEnhancementBehavior) {
+
+        for (int i = thisPtr->m_pStats->m_nAttackBonusPtr;
+             i < thisPtr->m_appliedEffects.num &&
+                 thisPtr->m_appliedEffects.element[i]->m_nType == Constants::EffectTrueType::AttackIncrease;
+             i++) {
+
+            auto pEffect = thisPtr->m_appliedEffects.element[i];
+            auto nParam0 = pEffect->GetInteger(0);
+            auto nParam1 = pEffect->GetInteger(1);
+            auto nParam2 = pEffect->GetInteger(2);
+            auto nParam3 = pEffect->GetInteger(3);
+            auto nParam4 = pEffect->GetInteger(4);
+
+            auto bCondition = nWeaponAttackType == nParam1;
+            if (nWeaponAttackType == 6) {
+                if (nParam1 == 1 || nParam1 == 3)
+                    bCondition = true;
+            } else {
+                if (nWeaponAttackType == 8 && nParam1 == 7)
+                    bCondition = true;
+            }
+
+            if (bCondition && nParam1 != 0 && nParam0 > nWeaponPower &&
+                (nParam2 == nRace || nParam2 == Constants::RacialType::All) &&
+                (nParam3 == 0 || nParam2 == (nAlignmentLaw & 0xff)) &&
+                (nParam4 == 0 || nParam3 == (nAlignmentGood & 0xff))
+                ) {
+
+                nWeaponPower = nParam0;
+
+            }
+        }
+    } else if(pAttackWeapon) {
+        //Find enhancement bonuses in weapon
+        for (int i = 0; i < pAttackWeapon->m_lstPassiveProperties.num; i++) {
+            auto pItemProperty = pAttackWeapon->m_lstPassiveProperties.element[i];
+
+            switch (pItemProperty.m_nPropertyName) {
+                case Constants::ItemProperty::EnhancementBonus:
+                    if (nWeaponPower < pItemProperty.m_nCostTableValue)
+                        nWeaponPower = pItemProperty.m_nCostTableValue;
+                    break;
+
+                case Constants::ItemProperty::EnhancementBonusVSAlignmentGroup:
+                    if (nWeaponPower < pItemProperty.m_nCostTableValue) {
+                        if(pItemProperty.m_nSubType == nAlignmentGood || pItemProperty.m_nSubType == nAlignmentLaw)
+                            nWeaponPower = pItemProperty.m_nCostTableValue;
+                    }
+                    break;
+
+                case Constants::ItemProperty::EnhancementBonusVSRacialGroup:
+                    if (nWeaponPower < pItemProperty.m_nCostTableValue && nRace == pItemProperty.m_nSubType)
+                        nWeaponPower = pItemProperty.m_nCostTableValue;
+                    break;
+
+                case Constants::ItemProperty::EnhancementBonusVSSpecificAlignment:
+
+                    if (nWeaponPower < pItemProperty.m_nCostTableValue) {
+                        switch (pItemProperty.m_nSubType) {
+                            case 0: //Lawful Good
+                                if(nAlignmentLaw == 2 && nAlignmentGood == 4)
+                                    nWeaponPower = pItemProperty.m_nCostTableValue;
+                                break;
+                            case 1: //Lawful Neutral
+                                if(nAlignmentLaw == 2 && nAlignmentGood == 1)
+                                    nWeaponPower = pItemProperty.m_nCostTableValue;
+                                break;
+                            case 2: //Lawful Evil
+                                if(nAlignmentLaw == 2 && nAlignmentGood == 5)
+                                    nWeaponPower = pItemProperty.m_nCostTableValue;
+                                break;
+                            case 3: //Neutral Good
+                                if(nAlignmentLaw == 1 && nAlignmentGood == 4)
+                                    nWeaponPower = pItemProperty.m_nCostTableValue;
+                                break;
+                            case 4: //True Neutral
+                                if(nAlignmentLaw == 1 && nAlignmentGood == 1)
+                                    nWeaponPower = pItemProperty.m_nCostTableValue;
+                                break;
+                            case 5: //Neutral Evil
+                                if(nAlignmentLaw == 1 && nAlignmentGood == 5)
+                                    nWeaponPower = pItemProperty.m_nCostTableValue;
+                                break;
+                            case 6: //Chaotic Good
+                                if(nAlignmentLaw == 3 && nAlignmentGood == 4)
+                                    nWeaponPower = pItemProperty.m_nCostTableValue;
+                                break;
+                            case 7: //Chaotic Neutral
+                                if(nAlignmentLaw == 3 && nAlignmentGood == 1)
+                                    nWeaponPower = pItemProperty.m_nCostTableValue;
+                                break;
+                            case 8: //Chaotic Evil
+                                if(nAlignmentLaw == 3 && nAlignmentGood == 5)
+                                    nWeaponPower = pItemProperty.m_nCostTableValue;
+                                break;
+                        }
+                    }
+                    break; //case EnhancementBonusVSSpecificAlignment
+            }
+        }
+    }
+
+    if (nWeaponAttackType == 3 || nWeaponAttackType == 4 || nWeaponAttackType == 5) {
+        for (int i = thisPtr->m_pStats->m_nDamageReductionPtr;
+             i < thisPtr->m_appliedEffects.num &&
+                 thisPtr->m_appliedEffects.element[i]->m_nType == Constants::EffectTrueType::DamageReduction;
+             i++) {
+
+            auto nParam1 = thisPtr->m_appliedEffects.element[i]->GetInteger(1);
+            if (nWeaponPower < nParam1)
+                nWeaponPower = nParam1;
+        }
+    }
+
+    int nMaxAttackBonus = Globals::AppManager()->m_pServerExoApp->GetAttackBonusLimit();
+    if (nWeaponPower > nMaxAttackBonus)
+        nWeaponPower = nMaxAttackBonus;
+
+    return nWeaponPower;
 }
 }

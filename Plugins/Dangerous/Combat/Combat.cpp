@@ -88,7 +88,7 @@ Combat::Combat(ViewPtr<Dangerous> plugin)
         (&CNWSCreatureStats__GetTotalACSkillMod);
     hooker->RequestExclusiveHook<API::Functions::CNWSCreatureStats__GetDEXMod>
         (&CNWSCreatureStats__GetDEXMod);*/
-    if(m_useCriticalCheckEvent)
+    if (m_useCriticalCheckEvent)
     {
         LOG_DEBUG("Using critical check event");
         hooker->RequestExclusiveHook<API::Functions::CNWSCreature__ResolveAttackRoll>
@@ -373,7 +373,7 @@ void Combat::CNWSCreature__ResolveAttackRoll(NWNXLib::API::CNWSCreature *thisPtr
                         g_plugin->NWX_EVENT_PREFIX + "ON_CRITICAL_HIT_CHECK",
                         NWNXLib::Utils::ObjectIDToString(thisPtr->m_idSelf)
                     });
-                if(g_plugin->m_lastEventReturnVal != -1)
+                if (g_plugin->m_lastEventReturnVal != -1)
                     bImmune = !g_plugin->m_lastEventReturnVal;
                 LOG_DEBUG("Crit: %d", !bImmune);
             }
@@ -779,10 +779,10 @@ void Combat::CNWSCreature__ResolvePostRangedDamage(CNWSCreature *thisPtr, CNWSOb
             bool bImmune = pTargetCreature->m_pStats->GetEffectImmunity(Constants::ImmunityType::CriticalHit,
                 thisPtr, 1);
 
-            g_plugin->m_lastEventSkipped = false;
             if (m_useDevastatingCriticalEvent)
             {
-                g_plugin->m_lastEventReturnVal = -1;
+                g_plugin->m_lastEventSkipped = false;
+                g_plugin->m_lastEventReturnVal = nDevastatingDC;
                 auto messaging = g_plugin->GetServices()->m_messaging.get();
                 messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
                     {"TARGET_ID", std::to_string(pTargetCreature->m_idSelf)});
@@ -795,13 +795,12 @@ void Combat::CNWSCreature__ResolvePostRangedDamage(CNWSCreature *thisPtr, CNWSOb
                         g_plugin->NWX_EVENT_PREFIX + "ON_DEVASTATING_CRITICAL_ROLL",
                         NWNXLib::Utils::ObjectIDToString(thisPtr->m_idSelf)
                     });
-                if(g_plugin->m_lastEventReturnVal > 0)
-                    nDevastatingDC = g_plugin->m_lastEventReturnVal;
+                nDevastatingDC = g_plugin->m_lastEventReturnVal;
                 bImmune |= g_plugin->m_lastEventSkipped || g_plugin->m_lastEventReturnVal < 1;
                 LOG_DEBUG("Devastating DC: %d | Skipped: %d", nDevastatingDC, !bImmune);
             }
 
-            if(!bImmune)
+            if (!bImmune)
             {
                 if (!pTargetCreature->SavingThrowRoll(1, nDevastatingDC, 0, thisPtr->m_idSelf, 1, 0, 1))
                 {
@@ -955,6 +954,7 @@ void Combat::CNWSCreature__ResolveDamage(NWNXLib::API::CNWSCreature *thisPtr, NW
 
             if (m_useDeathAttackRollEvent)
             {
+                g_plugin->m_lastEventSkipped = false;
                 g_plugin->m_lastEventReturnVal = nDeathAttackDC;
                 auto messaging = g_plugin->GetServices()->m_messaging.get();
                 messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
@@ -967,6 +967,8 @@ void Combat::CNWSCreature__ResolveDamage(NWNXLib::API::CNWSCreature *thisPtr, NW
                         (thisPtr->m_idSelf)
                     });
                 nDeathAttackDC = g_plugin->m_lastEventReturnVal;
+                if (g_plugin->m_lastEventSkipped)
+                    nDeathAttackDC = 0;
                 LOG_DEBUG("Death attack DC: %d | Skipped: %d", nDeathAttackDC, nDeathAttackDC < 1);
             }
 
@@ -1080,7 +1082,7 @@ void Combat::CNWSCreature__ResolvePostMeleeDamage(NWNXLib::API::CNWSCreature *th
                 if (m_useDevastatingCriticalEvent)
                 {
                     g_plugin->m_lastEventSkipped = false;
-                    g_plugin->m_lastEventReturnVal = -1;
+                    g_plugin->m_lastEventReturnVal = nDevastatingDC;
                     auto messaging = g_plugin->GetServices()->m_messaging.get();
                     messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
                         {"TARGET_ID", std::to_string(pTargetCreature->m_idSelf)});
@@ -1093,13 +1095,12 @@ void Combat::CNWSCreature__ResolvePostMeleeDamage(NWNXLib::API::CNWSCreature *th
                             g_plugin->NWX_EVENT_PREFIX + "ON_DEVASTATING_CRITICAL_ROLL",
                             NWNXLib::Utils::ObjectIDToString(thisPtr->m_idSelf)
                         });
-                    if(g_plugin->m_lastEventReturnVal > 0)
-                        nDevastatingDC = g_plugin->m_lastEventReturnVal;
+                    nDevastatingDC = g_plugin->m_lastEventReturnVal;
                     bImmune |= g_plugin->m_lastEventSkipped || g_plugin->m_lastEventReturnVal < 1;
-                    LOG_DEBUG("Devastating DC: %d | Skipped: %d", nDevastatingDC, bImmune);
+                    LOG_DEBUG("Devastating DC: %d | Skipped: %d", nDevastatingDC, !bImmune);
                 }
 
-                if(!bImmune)
+                if (!bImmune)
                 {
                     if (!pTargetCreature->SavingThrowRoll(1, nDevastatingDC, 0,
                         thisPtr->m_idSelf, 1, 0, 1))
@@ -1470,7 +1471,7 @@ int32_t Combat::CNWSCreatureStats__GetDamageRoll(NWNXLib::API::CNWSCreatureStats
                 NWNXLib::Utils::ObjectIDToString(thisPtr->m_pBaseCreature->m_idSelf)
             });
         nSneakAttackDamage = g_plugin->m_lastEventReturnVal;
-        if(nSneakAttackDamage < 1)
+        if (nSneakAttackDamage < 1)
             nSneakAttackDamage = 0;
         LOG_DEBUG("Modified sneak damage: %d", nSneakAttackDamage);
     }
@@ -1534,6 +1535,8 @@ int32_t Combat::CNWSCreatureStats__GetDamageRoll(NWNXLib::API::CNWSCreatureStats
                 NWNXLib::Utils::ObjectIDToString(thisPtr->m_pBaseCreature->m_idSelf)
             });
         nCriticalDamage = g_plugin->m_lastEventReturnVal;
+        if (nCriticalDamage < 1)
+            nCriticalDamage = 0;
         LOG_DEBUG("Modified critical damage: %d", nCriticalDamage);
     }
 

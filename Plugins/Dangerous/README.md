@@ -23,7 +23,7 @@ Rewritten engine functions that aren't properly tested yet and can potentially b
 Weapons with attack bonus will not bypass Damage Reduction from creatures (a.k.a. soak). Only enhancement bonuses will.
 
 ### NWNX_DANGEROUS_FIX_OVERWHELMING_DAMAGE
-Overwhelming will behave as expected based on the description. Originally an extra 1d6 damage was added.
+Overwhelming critical will behave as expected based on the description. Originally an extra 1d6 damage was added.
 It will also fix the KiDamage bug where overwhelming critical only added 1d6 damage instead of (multiplier-1)d6.
 
 ## New events

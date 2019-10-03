@@ -5,13 +5,24 @@
 namespace Dangerous
 {
 
+class Dangerous;
+
 class Combat
 {
 public:
-    explicit Combat(NWNXLib::ViewPtr<NWNXLib::Services::ProxyServiceList> &services);
+    explicit Combat(NWNXLib::ViewPtr<Dangerous> plugin);
+    ~Combat() = default;
 
 private:
     static bool m_overrideEnhancementBehavior;
+    static bool m_useEpicDodgeEvent;
+    static bool m_useDeathAttackRollEvent;
+    static bool m_fixOverwhelmingDamage;
+    static bool m_useDevastatingCriticalEvent;
+    static bool m_useSneakAttackCheckEvent;
+    static bool m_useCriticalCheckEvent;
+    static bool m_useCriticalHitDamageEvent;
+    static bool m_useSneakDamageEvent;
 
     //Helper function to calculate sneak attack dice
     static int GetSneakAttackDice(NWNXLib::API::CNWSCreature *thisPtr);

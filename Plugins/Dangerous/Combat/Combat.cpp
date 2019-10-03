@@ -1,5 +1,7 @@
 #include "Combat.hpp"
+#include "Dangerous.hpp"
 #include "Services/Config/Config.hpp"
+#include "Services/Messaging/Messaging.hpp"
 
 #include "API/C2DA.hpp"
 #include "API/CAppManager.hpp"
@@ -24,16 +26,39 @@
 namespace Dangerous
 {
 
+bool Combat::m_overrideEnhancementBehavior = false;
+bool Combat::m_useEpicDodgeEvent = false;
+bool Combat::m_useDeathAttackRollEvent = false;
+bool Combat::m_fixOverwhelmingDamage = false;
+bool Combat::m_useDevastatingCriticalEvent = false;
+bool Combat::m_useSneakAttackCheckEvent = false;
+bool Combat::m_useCriticalCheckEvent = false;
+bool Combat::m_useCriticalHitDamageEvent = false;
+bool Combat::m_useSneakDamageEvent = false;
+
 using namespace NWNXLib;
 using namespace NWNXLib::API;
 
-Combat::Combat(ViewPtr<Services::ProxyServiceList> &services)
+static ViewPtr<Dangerous> g_plugin;
+
+Combat::Combat(ViewPtr<Dangerous> plugin)
 {
-    ViewPtr<Services::HooksProxy> hooker = services->m_hooks;
-    m_overrideEnhancementBehavior = services->m_config->Get<bool>("PREVENT_AB_BYPASSING_REDUCTION", false);
-    /*hooker->RequestExclusiveHook<API::Functions::CNWSCreature__ResolveAttackRoll>
-        (&CNWSCreature__ResolveAttackRoll);
-    hooker->RequestExclusiveHook<API::Functions::CNWSCreatureStats__GetCriticalHitRoll>
+    if (!g_plugin)
+        g_plugin = plugin;
+
+    auto &hooker = plugin->GetServices()->m_hooks;
+    auto &config = plugin->GetServices()->m_config;
+    m_overrideEnhancementBehavior = config->Get<bool>("PREVENT_AB_BYPASSING_SOAK", false);
+    m_useEpicDodgeEvent = config->Get<bool>("USE_EPIC_DODGE_EVENT", false);
+    m_useDeathAttackRollEvent = config->Get<bool>("USE_DEATH_ATTACK_ROLL_EVENT", false);
+    m_fixOverwhelmingDamage = config->Get<bool>("FIX_OVERWHELMING_DAMAGE", false);
+    m_useDevastatingCriticalEvent = config->Get<bool>("USE_DEVASTATING_CRITICAL_EVENT", false);
+    m_useSneakAttackCheckEvent = config->Get<bool>("USE_SNEAK_ATTACK_CHECK_EVENT", false);
+    m_useCriticalCheckEvent = config->Get<bool>("USE_CRITICAL_CHECK_EVENT", false);
+    m_useCriticalHitDamageEvent = config->Get<bool>("USE_CRITICAL_HIT_DAMAGE_EVENT", false);
+    m_useSneakDamageEvent = config->Get<bool>("USE_SNEAK_DAMAGE_EVENT", false);
+
+    /*hooker->RequestExclusiveHook<API::Functions::CNWSCreatureStats__GetCriticalHitRoll>
         (&CNWSCreatureStats__GetCriticalHitRoll);
     hooker->RequestExclusiveHook<API::Functions::CNWSCreature__ResolveDefensiveEffects>
         (&CNWSCreature__ResolveDefensiveEffects);
@@ -41,18 +66,10 @@ Combat::Combat(ViewPtr<Services::ProxyServiceList> &services)
         (&CNWSCreature__ResolveMeleeAttack);
     hooker->RequestExclusiveHook<API::Functions::CNWSCreature__ResolveRangedAttack>
         (&CNWSCreature__ResolveRangedAttack);
-    hooker->RequestExclusiveHook<API::Functions::CNWSCreature__ResolvePostRangedDamage>
-        (&CNWSCreature__ResolvePostRangedDamage);
     hooker->RequestExclusiveHook<API::Functions::CNWSCreature__ResolveCachedSpecialAttacks>
         (&CNWSCreature__ResolveCachedSpecialAttacks);
     hooker->RequestExclusiveHook<API::Functions::CNWSCreature__ResolveSituationalModifiers>
         (&CNWSCreature__ResolveSituationalModifiers);
-    hooker->RequestExclusiveHook<API::Functions::CNWSCreature__ResolveDamage>
-        (&CNWSCreature__ResolveDamage);
-    hooker->RequestExclusiveHook<API::Functions::CNWSCreature__ResolvePostMeleeDamage>
-        (&CNWSCreature__ResolvePostMeleeDamage);
-    hooker->RequestExclusiveHook<API::Functions::CNWSCreatureStats__GetDamageRoll>
-        (&CNWSCreatureStats__GetDamageRoll);
     hooker->RequestExclusiveHook<API::Functions::CNWSCreature__GetIsWeaponEffective>
         (&CNWSCreature__GetIsWeaponEffective);
     hooker->RequestExclusiveHook<API::Functions::CNWSCreatureStats__GetDamageBonus>
@@ -71,8 +88,35 @@ Combat::Combat(ViewPtr<Services::ProxyServiceList> &services)
         (&CNWSCreatureStats__GetTotalACSkillMod);
     hooker->RequestExclusiveHook<API::Functions::CNWSCreatureStats__GetDEXMod>
         (&CNWSCreatureStats__GetDEXMod);*/
-    if(m_overrideEnhancementBehavior)
+    if(m_useCriticalCheckEvent)
     {
+        LOG_DEBUG("Using critical check event");
+        hooker->RequestExclusiveHook<API::Functions::CNWSCreature__ResolveAttackRoll>
+            (&CNWSCreature__ResolveAttackRoll);
+    }
+    if (m_useDevastatingCriticalEvent)
+    {
+        LOG_DEBUG("Using devastating critical event");
+        hooker->RequestExclusiveHook<API::Functions::CNWSCreature__ResolvePostMeleeDamage>
+            (&CNWSCreature__ResolvePostMeleeDamage);
+        hooker->RequestExclusiveHook<API::Functions::CNWSCreature__ResolvePostRangedDamage>
+            (&CNWSCreature__ResolvePostRangedDamage);
+    }
+    if (m_fixOverwhelmingDamage || m_useSneakDamageEvent || m_useCriticalHitDamageEvent)
+    {
+        LOG_DEBUG("Using damage events");
+        hooker->RequestExclusiveHook<API::Functions::CNWSCreatureStats__GetDamageRoll>
+            (&CNWSCreatureStats__GetDamageRoll);
+    }
+    if (m_useEpicDodgeEvent || m_useDeathAttackRollEvent)
+    {
+        LOG_DEBUG("Using dodge/death attack events");
+        hooker->RequestExclusiveHook<API::Functions::CNWSCreature__ResolveDamage>
+            (&CNWSCreature__ResolveDamage);
+    }
+    if (m_overrideEnhancementBehavior)
+    {
+        LOG_DEBUG("Using AB absorption fix");
         hooker->RequestExclusiveHook<API::Functions::CNWSCreature__GetWeaponPower>
             (&CNWSCreature__GetWeaponPower);
     }
@@ -312,12 +356,34 @@ void Combat::CNWSCreature__ResolveAttackRoll(NWNXLib::API::CNWSCreature *thisPtr
                 return;
             }
 
-            if (!pTargetCreature->m_pStats->GetEffectImmunity(Constants::ImmunityType::CriticalHit, thisPtr, 1))
+            bool bImmune = pTargetCreature->m_pStats->GetEffectImmunity(Constants::ImmunityType::CriticalHit,
+                thisPtr, 1);
+
+            //TODO: Maybe add a way to force a non-crit hit to be a crit if there is a need for it
+            if (m_useCriticalCheckEvent)
             {
-                //Crit immunity
+                g_plugin->m_lastEventReturnVal = -1;
+                auto messaging = g_plugin->GetServices()->m_messaging.get();
+                messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
+                    {"TARGET_ID", std::to_string(pTargetCreature->m_idSelf)});
+                messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
+                    {"CRIT_IMMUNE", std::to_string(bImmune)});
+                messaging->BroadcastMessage("NWNX_EVENT_SIGNAL_EVENT",
+                    {
+                        g_plugin->NWX_EVENT_PREFIX + "ON_CRITICAL_HIT_CHECK",
+                        NWNXLib::Utils::ObjectIDToString(thisPtr->m_idSelf)
+                    });
+                if(g_plugin->m_lastEventReturnVal != -1)
+                    bImmune = !g_plugin->m_lastEventReturnVal;
+                LOG_DEBUG("Crit: %d", !bImmune);
+            }
+
+            if (!bImmune)
+            {
                 pAttackData->m_nAttackResult = 3;
                 return;
             }
+            //Crit immune
             auto pMessage = new CNWCCMessageData();
             pMessage->SetObjectID(0, pTarget->m_idSelf);
             pMessage->SetInteger(0, 126);
@@ -703,32 +769,59 @@ void Combat::CNWSCreature__ResolvePostRangedDamage(CNWSCreature *thisPtr, CNWSOb
 
         auto pCurrentWeapon = pCombatRound->GetCurrentAttackWeapon(pCurrentAttack->m_nWeaponAttackType);
         if (pCurrentAttack->m_nAttackResult == 3 && thisPtr->m_pStats->GetEpicWeaponDevastatingCritical(pCurrentWeapon)
-            && !pTargetCreature->m_pStats->GetEffectImmunity(Constants::ImmunityType::CriticalHit, thisPtr, 1) &&
-            !pTargetCreature->m_bIsImmortal && !pCurrentAttack->m_bKillingBlow
+            && !pTargetCreature->m_bIsImmortal && !pCurrentAttack->m_bKillingBlow
             )
         {
             //Devastating critical roll
             auto nStrength = thisPtr->m_pStats->m_nStrengthModifier;
             auto nLevel = thisPtr->m_pStats->GetLevel(0);
+            auto nDevastatingDC = nLevel / 2 + nStrength + 10;
+            bool bImmune = pTargetCreature->m_pStats->GetEffectImmunity(Constants::ImmunityType::CriticalHit,
+                thisPtr, 1);
 
-            if (!pTargetCreature->SavingThrowRoll(1, nLevel / 2 + nStrength + 10, 0, thisPtr->m_idSelf, 1, 0, 1))
+            g_plugin->m_lastEventSkipped = false;
+            if (m_useDevastatingCriticalEvent)
             {
-                auto pEffect = new CGameEffect(1);
-                pEffect->m_nType = Constants::EffectTrueType::Death;
-                pEffect->m_nSubType = 0;
-                pEffect->SetCreator(thisPtr->m_idSelf);
-                pEffect->SetInteger(0, 1);
-                pEffect->SetInteger(1, 1);
-                pCurrentAttack->m_alstOnHitGameEffects.Add(pEffect);
-                pCurrentAttack->m_nAttackResult = 10;
+                g_plugin->m_lastEventReturnVal = -1;
+                auto messaging = g_plugin->GetServices()->m_messaging.get();
+                messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
+                    {"TARGET_ID", std::to_string(pTargetCreature->m_idSelf)});
+                messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
+                    {"DEVASTATING_DC", std::to_string(nDevastatingDC)});
+                messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
+                    {"CRIT_IMMUNE", std::to_string(bImmune)});
+                messaging->BroadcastMessage("NWNX_EVENT_SIGNAL_EVENT",
+                    {
+                        g_plugin->NWX_EVENT_PREFIX + "ON_DEVASTATING_CRITICAL_ROLL",
+                        NWNXLib::Utils::ObjectIDToString(thisPtr->m_idSelf)
+                    });
+                if(g_plugin->m_lastEventReturnVal > 0)
+                    nDevastatingDC = g_plugin->m_lastEventReturnVal;
+                bImmune |= g_plugin->m_lastEventSkipped || g_plugin->m_lastEventReturnVal < 1;
+                LOG_DEBUG("Devastating DC: %d | Skipped: %d", nDevastatingDC, !bImmune);
             }
-            else
+
+            if(!bImmune)
             {
-                auto pMessage = new CNWCCMessageData();
-                pMessage->m_nType = 2;
-                pMessage->SetObjectID(0, thisPtr->m_idSelf);
-                pMessage->SetInteger(0, 0x101);
-                pCurrentAttack->m_alstPendingFeedback.Add(pMessage);
+                if (!pTargetCreature->SavingThrowRoll(1, nDevastatingDC, 0, thisPtr->m_idSelf, 1, 0, 1))
+                {
+                    auto pEffect = new CGameEffect(1);
+                    pEffect->m_nType = Constants::EffectTrueType::Death;
+                    pEffect->m_nSubType = 0;
+                    pEffect->SetCreator(thisPtr->m_idSelf);
+                    pEffect->SetInteger(0, 1);
+                    pEffect->SetInteger(1, 1);
+                    pCurrentAttack->m_alstOnHitGameEffects.Add(pEffect);
+                    pCurrentAttack->m_nAttackResult = 10;
+                }
+                else
+                {
+                    auto pMessage = new CNWCCMessageData();
+                    pMessage->m_nType = 2;
+                    pMessage->SetObjectID(0, thisPtr->m_idSelf);
+                    pMessage->SetInteger(0, 0x101);
+                    pCurrentAttack->m_alstPendingFeedback.Add(pMessage);
+                }
             }
         }
 
@@ -859,8 +952,27 @@ void Combat::CNWSCreature__ResolveDamage(NWNXLib::API::CNWSCreature *thisPtr, NW
             auto nAssassinLevels = thisPtr->m_pStats->GetNumLevelsOfClass(Constants::ClassType::Assassin);
             nAssassinLevels = nAssassinLevels > 0 ? nAssassinLevels : 1;
             auto nDeathAttackDC = 10 + thisPtr->m_pStats->m_nIntelligenceModifier + nAssassinLevels;
-            if (!pTargetCreature->SavingThrowRoll(1, nDeathAttackDC, 20, thisPtr->m_idSelf, 1, 0, 1)
-                && pTargetCreature->m_nState != 8)
+
+            if (m_useDeathAttackRollEvent)
+            {
+                g_plugin->m_lastEventReturnVal = nDeathAttackDC;
+                auto messaging = g_plugin->GetServices()->m_messaging.get();
+                messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
+                    {"TARGET_ID", std::to_string(pTargetCreature->m_idSelf)});
+                messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
+                    {"DEATH_ATTACK_DC", std::to_string(nDeathAttackDC)});
+                messaging->BroadcastMessage("NWNX_EVENT_SIGNAL_EVENT",
+                    {
+                        g_plugin->NWX_EVENT_PREFIX + "ON_DEATH_ATTACK_ROLL", NWNXLib::Utils::ObjectIDToString
+                        (thisPtr->m_idSelf)
+                    });
+                nDeathAttackDC = g_plugin->m_lastEventReturnVal;
+                LOG_DEBUG("Death attack DC: %d | Skipped: %d", nDeathAttackDC, nDeathAttackDC < 1);
+            }
+
+            if (nDeathAttackDC > 0 &&
+                !pTargetCreature->SavingThrowRoll(1, nDeathAttackDC, 20, thisPtr->m_idSelf, 1, 0, 1) &&
+                pTargetCreature->m_nState != 8)
             {
                 thisPtr->ApplyOnHitDeathAttack(pTarget, nAssassinLevels + Globals::Rules()->RollDice(1, 6));
             }
@@ -870,22 +982,38 @@ void Combat::CNWSCreature__ResolveDamage(NWNXLib::API::CNWSCreature *thisPtr, NW
         if (nDamage > 0 && pTargetCreature->m_pStats->HasFeat(Constants::Feat::EpicDodge) &&
             !pTargetCreature->m_pcCombatRound->m_bEpicDodgeUsed)
         {
-            auto pMessage = new CNWCCMessageData();
-            pMessage->m_nType = 2;
-            pMessage->SetObjectID(0, pTarget->m_idSelf);
-            pMessage->SetInteger(0, 234);
-            pCurrentAttack->m_alstPendingFeedback.Add(pMessage);
-            pCurrentAttack->m_nAttackResult = 4;
-
-            if (thisPtr->GetRangeWeaponEquipped())
+            g_plugin->m_lastEventSkipped = false;
+            if (m_useEpicDodgeEvent)
             {
-                pCurrentAttack->m_vRangedTarget.x = pTarget->m_vPosition.x;
-                pCurrentAttack->m_vRangedTarget.y = pTarget->m_vPosition.y;
-                pCurrentAttack->m_vRangedTarget.z = pTarget->m_vPosition.z;
+                auto messaging = g_plugin->GetServices()->m_messaging.get();
+                messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
+                    {"ATTACKER_ID", std::to_string(thisPtr->m_idSelf)});
+                messaging->BroadcastMessage("NWNX_EVENT_SIGNAL_EVENT",
+                    {
+                        g_plugin->NWX_EVENT_PREFIX + "ON_EPIC_DODGE",
+                        NWNXLib::Utils::ObjectIDToString(pTargetCreature->m_idSelf)
+                    });
+                LOG_DEBUG("Dodge skipped: %d", g_plugin->m_lastEventSkipped);
             }
+            if (!g_plugin->m_lastEventSkipped)
+            {
+                auto pMessage = new CNWCCMessageData();
+                pMessage->m_nType = 2;
+                pMessage->SetObjectID(0, pTarget->m_idSelf);
+                pMessage->SetInteger(0, 234);
+                pCurrentAttack->m_alstPendingFeedback.Add(pMessage);
+                pCurrentAttack->m_nAttackResult = 4;
 
-            pTargetCreature->m_pcCombatRound->m_bEpicDodgeUsed = 1;
-            return;
+                if (thisPtr->GetRangeWeaponEquipped())
+                {
+                    pCurrentAttack->m_vRangedTarget.x = pTarget->m_vPosition.x;
+                    pCurrentAttack->m_vRangedTarget.y = pTarget->m_vPosition.y;
+                    pCurrentAttack->m_vRangedTarget.z = pTarget->m_vPosition.z;
+                }
+
+                pTargetCreature->m_pcCombatRound->m_bEpicDodgeUsed = 1;
+                return;
+            }
         }
     }
 
@@ -939,31 +1067,60 @@ void Combat::CNWSCreature__ResolvePostMeleeDamage(NWNXLib::API::CNWSCreature *th
             auto pCurrentWeapon = pCombatRound->GetCurrentAttackWeapon(pCurrentAttack->m_nWeaponAttackType);
             if (pCurrentAttack->m_nAttackResult == 3
                 && thisPtr->m_pStats->GetEpicWeaponDevastatingCritical(pCurrentWeapon) &&
-                !pTargetCreature->m_pStats->GetEffectImmunity(Constants::ImmunityType::CriticalHit, thisPtr, 1) &&
                 !pTargetCreature->m_bIsImmortal && !pCurrentAttack->m_bKillingBlow
                 )
             {
                 //Devastating Critical
                 auto nStrength = thisPtr->m_pStats->m_nStrengthModifier;
                 auto nLevel = thisPtr->m_pStats->GetLevel(0);
-                if (!pTargetCreature->SavingThrowRoll(1, nLevel / 2 + nStrength + 10, 0, thisPtr->m_idSelf, 1, 0, 1))
+                auto nDevastatingDC = nLevel / 2 + nStrength + 10;
+                bool bImmune = pTargetCreature->m_pStats->GetEffectImmunity(Constants::ImmunityType::CriticalHit,
+                    thisPtr, 1);
+
+                if (m_useDevastatingCriticalEvent)
                 {
-                    auto pEffect = new CGameEffect(1);
-                    pEffect->m_nType = Constants::EffectTrueType::Death;
-                    pEffect->m_nSubType = 0;
-                    pEffect->SetCreator(thisPtr->m_idSelf);
-                    pEffect->SetInteger(0, 1);
-                    pEffect->SetInteger(1, 1);
-                    pCurrentAttack->m_alstOnHitGameEffects.Add(pEffect);
-                    pCurrentAttack->m_nAttackResult = 10;
+                    g_plugin->m_lastEventSkipped = false;
+                    g_plugin->m_lastEventReturnVal = -1;
+                    auto messaging = g_plugin->GetServices()->m_messaging.get();
+                    messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
+                        {"TARGET_ID", std::to_string(pTargetCreature->m_idSelf)});
+                    messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
+                        {"DEVASTATING_DC", std::to_string(nDevastatingDC)});
+                    messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
+                        {"CRIT_IMMUNE", std::to_string(bImmune)});
+                    messaging->BroadcastMessage("NWNX_EVENT_SIGNAL_EVENT",
+                        {
+                            g_plugin->NWX_EVENT_PREFIX + "ON_DEVASTATING_CRITICAL_ROLL",
+                            NWNXLib::Utils::ObjectIDToString(thisPtr->m_idSelf)
+                        });
+                    if(g_plugin->m_lastEventReturnVal > 0)
+                        nDevastatingDC = g_plugin->m_lastEventReturnVal;
+                    bImmune |= g_plugin->m_lastEventSkipped || g_plugin->m_lastEventReturnVal < 1;
+                    LOG_DEBUG("Devastating DC: %d | Skipped: %d", nDevastatingDC, bImmune);
                 }
-                else
+
+                if(!bImmune)
                 {
-                    auto pMessage = new CNWCCMessageData();
-                    pMessage->m_nType = 2;
-                    pMessage->SetObjectID(0, thisPtr->m_idSelf);
-                    pMessage->SetInteger(0, 0x101);
-                    pCurrentAttack->m_alstPendingFeedback.Add(pMessage);
+                    if (!pTargetCreature->SavingThrowRoll(1, nDevastatingDC, 0,
+                        thisPtr->m_idSelf, 1, 0, 1))
+                    {
+                        auto pEffect = new CGameEffect(1);
+                        pEffect->m_nType = Constants::EffectTrueType::Death;
+                        pEffect->m_nSubType = 0;
+                        pEffect->SetCreator(thisPtr->m_idSelf);
+                        pEffect->SetInteger(0, 1);
+                        pEffect->SetInteger(1, 1);
+                        pCurrentAttack->m_alstOnHitGameEffects.Add(pEffect);
+                        pCurrentAttack->m_nAttackResult = 10;
+                    }
+                    else
+                    {
+                        auto pMessage = new CNWCCMessageData();
+                        pMessage->m_nType = 2;
+                        pMessage->SetObjectID(0, thisPtr->m_idSelf);
+                        pMessage->SetInteger(0, 0x101);
+                        pCurrentAttack->m_alstPendingFeedback.Add(pMessage);
+                    }
                 }
             }
 
@@ -1094,6 +1251,7 @@ int32_t Combat::CNWSCreatureStats__GetDamageRoll(NWNXLib::API::CNWSCreatureStats
     int nDifficultyOption = 100;
     int nWeightParam1 = 0, nWeightParam2 = 0;
     int nDamage = 0;
+    int nCriticalDamage = 0;
 
     //Get current weapon
     if (bOffhand)
@@ -1141,13 +1299,14 @@ int32_t Combat::CNWSCreatureStats__GetDamageRoll(NWNXLib::API::CNWSCreatureStats
         {
             int bOverwhelming = thisPtr->GetEpicWeaponOverwhelmingCritical(pAttackWeapon);
             int nMultiplier = thisPtr->GetCriticalHitMultiplier(bOffhand);
-            for (int i = 0; i < nMultiplier; i++)
+            nDamage += thisPtr->GetUnarmedDamageRoll(pTarget);
+            for (int i = 1; i < nMultiplier; i++)
             {
-                nDamage += thisPtr->GetUnarmedDamageRoll(pTarget);
+                nCriticalDamage += thisPtr->GetUnarmedDamageRoll(pTarget);
             }
-            //TODO: Add variable to fix extra 1d6 damage
+
             if (bOverwhelming)
-                nDamage += Globals::Rules()->RollDice(nMultiplier, 6); //Should be nMultiplier - 1
+                nCriticalDamage += Globals::Rules()->RollDice(nMultiplier - (m_fixOverwhelmingDamage == 1), 6);
         }
 
     }
@@ -1176,15 +1335,20 @@ int32_t Combat::CNWSCreatureStats__GetDamageRoll(NWNXLib::API::CNWSCreatureStats
                         {
                             int bOverwhelming = thisPtr->GetEpicWeaponOverwhelmingCritical(pAttackWeapon);
                             int nMultiplier = thisPtr->GetCriticalHitMultiplier(bOffhand);
-                            for (int i = 0; i < nMultiplier; i++)
+                            int nRoll = Globals::Rules()->RollDice(nDice, nDie);
+                            nDamage += Globals::Rules()->GetWeightedDamageAmount(nRoll, nDice * nDie, nWeightParam1,
+                                nWeightParam2, nDifficultyOption);
+                            for (int i = 1; i < nMultiplier; i++)
                             {
-                                int nRoll = Globals::Rules()->RollDice(nDice, nDie);
-                                nDamage += Globals::Rules()->GetWeightedDamageAmount(nRoll, nDice * nDie, nWeightParam1,
+                                nRoll = Globals::Rules()->RollDice(nDice, nDie);
+                                nCriticalDamage += Globals::Rules()->GetWeightedDamageAmount(nRoll, nDice * nDie,
+                                    nWeightParam1,
                                     nWeightParam2, nDifficultyOption);
                             }
-                            //TODO: Add variable to fix extra 1d6 damage
+
                             if (bOverwhelming)
-                                nDamage += Globals::Rules()->RollDice(nMultiplier, 6); //Should be nMultiplier - 1
+                                nCriticalDamage += Globals::Rules()->RollDice(
+                                    nMultiplier - (m_fixOverwhelmingDamage == 1), 6);
                         }
                         else
                         {
@@ -1204,15 +1368,18 @@ int32_t Combat::CNWSCreatureStats__GetDamageRoll(NWNXLib::API::CNWSCreatureStats
                 {
                     int bOverwhelming = thisPtr->GetEpicWeaponOverwhelmingCritical(pAttackWeapon);
                     int nMultiplier = thisPtr->GetCriticalHitMultiplier(bOffhand);
-                    for (int i = 0; i < nMultiplier; i++)
+                    int nRoll = Globals::Rules()->RollDice(nDice, nDie);
+                    nDamage += Globals::Rules()->GetWeightedDamageAmount(nRoll, nDice * nDie, nWeightParam1,
+                        nWeightParam2, nDifficultyOption);
+                    for (int i = 1; i < nMultiplier; i++)
                     {
-                        int nRoll = Globals::Rules()->RollDice(nDice, nDie);
-                        nDamage += Globals::Rules()->GetWeightedDamageAmount(nRoll, nDice * nDie, nWeightParam1,
+                        nRoll = Globals::Rules()->RollDice(nDice, nDie);
+                        nCriticalDamage += Globals::Rules()->GetWeightedDamageAmount(nRoll, nDice * nDie, nWeightParam1,
                             nWeightParam2, nDifficultyOption);
                     }
-                    //TODO: Add variable to fix extra 1d6 damage
+
                     if (bOverwhelming)
-                        nDamage += Globals::Rules()->RollDice(nMultiplier, 6); //Should be nMultiplier - 1
+                        nCriticalDamage += Globals::Rules()->RollDice(nMultiplier - (m_fixOverwhelmingDamage == 1), 6);
                 }
                 else
                 {
@@ -1264,11 +1431,11 @@ int32_t Combat::CNWSCreatureStats__GetDamageRoll(NWNXLib::API::CNWSCreatureStats
                 int nMultiplier = thisPtr->GetCriticalHitMultiplier(bOffhand);
                 for (int i = 1; i < nMultiplier; i++)
                 {
-                    nDamage += Globals::Rules()->RollDice(nDice, nDie);
+                    nCriticalDamage += Globals::Rules()->RollDice(nDice, nDie);
                 }
-                //TODO: Fix overwhelming attack only adding 1d6 damage on crits
+
                 if (bOverwhelming)
-                    nDamage += Globals::Rules()->RollDice(1, 6); //should be nMultiplier d6
+                    nCriticalDamage += Globals::Rules()->RollDice(m_fixOverwhelmingDamage ? nMultiplier - 1 : 1, 6);
             }
         }
 
@@ -1276,19 +1443,36 @@ int32_t Combat::CNWSCreatureStats__GetDamageRoll(NWNXLib::API::CNWSCreatureStats
         if (pAttackWeapon->GetPropertyByTypeExists(Constants::ItemProperty::NoDamage, 0))
         { //NoDamage
             nDamage = 0;
+            nCriticalDamage = 0;
         }
     }
 
-    if (bSneak)
-    {
-        int nSneakAttackDice = GetSneakAttackDice(thisPtr->m_pBaseCreature);
-        nDamage += Globals::Rules()->RollDice(nSneakAttackDice, 6);
-    }
 
-    if (bDeath)
+    int nSneakAttackDice = bSneak ? GetSneakAttackDice(thisPtr->m_pBaseCreature) : 0;
+    int nDeathAttackDice = bDeath ? GetDeathAttackDice(thisPtr->m_pBaseCreature) : 0;
+    int nSneakAttackDamage = 0;
+    if (nSneakAttackDice || nDeathAttackDice)
+        nSneakAttackDamage = Globals::Rules()->RollDice(nSneakAttackDice + nDeathAttackDice, 6);
+
+    if (m_useSneakDamageEvent)
     {
-        int nDeathAttackDice = GetDeathAttackDice(thisPtr->m_pBaseCreature);
-        nDamage += Globals::Rules()->RollDice(nDeathAttackDice, 6);
+        g_plugin->m_lastEventReturnVal = nSneakAttackDamage;
+        auto messaging = g_plugin->GetServices()->m_messaging.get();
+        messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
+            {"SNEAK_DICE", std::to_string(nSneakAttackDice)});
+        messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
+            {"DEATH_DICE", std::to_string(nDeathAttackDice)});
+        messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
+            {"SNEAK_DAMAGE", std::to_string(nSneakAttackDamage)});
+        messaging->BroadcastMessage("NWNX_EVENT_SIGNAL_EVENT",
+            {
+                g_plugin->NWX_EVENT_PREFIX + "ON_GET_SNEAK_DAMAGE",
+                NWNXLib::Utils::ObjectIDToString(thisPtr->m_pBaseCreature->m_idSelf)
+            });
+        nSneakAttackDamage = g_plugin->m_lastEventReturnVal;
+        if(nSneakAttackDamage < 1)
+            nSneakAttackDamage = 0;
+        LOG_DEBUG("Modified sneak damage: %d", nSneakAttackDamage);
     }
 
     CNWSCreature *pTargetCreature = nullptr;
@@ -1298,12 +1482,13 @@ int32_t Combat::CNWSCreatureStats__GetDamageRoll(NWNXLib::API::CNWSCreatureStats
     }
     auto nBonusDamage = thisPtr->GetDamageBonus(pTargetCreature, bOffhand);
 
+    nDamage += nBonusDamage;
     if (bCritical)
     {
         int nMultiplier = thisPtr->GetCriticalHitMultiplier(bOffhand);
-        for (int i = 0; i < nMultiplier; i++)
+        for (int i = 1; i < nMultiplier; i++)
         {
-            nDamage += nBonusDamage;
+            nCriticalDamage += nBonusDamage;
         }
 
         if (pAttackWeapon && pAttackWeapon->GetPropertyByTypeExists(Constants::ItemProperty::MassiveCriticals, 0))
@@ -1320,14 +1505,10 @@ int32_t Combat::CNWSCreatureStats__GetDamageRoll(NWNXLib::API::CNWSCreatureStats
                 Globals::Rules()->m_p2DArrays->m_pIPRPDamageTable->GetINTEntry(nCost, CExoString("Die"), &nDie);
                 if (nDice > 0)
                 {
-                    nDamage += Globals::Rules()->RollDice(nDice, nDie);
+                    nCriticalDamage += Globals::Rules()->RollDice(nDice, nDie);
                 }
             }
         }
-    }
-    else
-    {
-        nDamage += nBonusDamage;
     }
 
     nBonusDamage = thisPtr->m_pBaseCreature->GetTotalEffectBonus(2, pTarget, 0, bKiDamage, 0, 0, -1, -1, 0);
@@ -1338,6 +1519,25 @@ int32_t Combat::CNWSCreatureStats__GetDamageRoll(NWNXLib::API::CNWSCreatureStats
         nDamage = nBonusDamage;
     if (nDamage < 1)
         nDamage = 1;
+
+    if (bCritical && m_useCriticalHitDamageEvent)
+    {
+        g_plugin->m_lastEventReturnVal = nCriticalDamage;
+        auto messaging = g_plugin->GetServices()->m_messaging.get();
+        messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
+            {"BASE_DAMAGE", std::to_string(nDamage)});
+        messaging->BroadcastMessage("NWNX_EVENT_PUSH_EVENT_DATA",
+            {"EXTRA_DAMAGE", std::to_string(nCriticalDamage)});
+        messaging->BroadcastMessage("NWNX_EVENT_SIGNAL_EVENT",
+            {
+                g_plugin->NWX_EVENT_PREFIX + "ON_GET_CRITICAL_DAMAGE",
+                NWNXLib::Utils::ObjectIDToString(thisPtr->m_pBaseCreature->m_idSelf)
+            });
+        nCriticalDamage = g_plugin->m_lastEventReturnVal;
+        LOG_DEBUG("Modified critical damage: %d", nCriticalDamage);
+    }
+
+    nDamage += nCriticalDamage + nSneakAttackDamage;
 
     if (pTarget)
     {
@@ -1889,7 +2089,7 @@ unsigned char Combat::CNWSCreature__CalculateDamagePower(NWNXLib::API::CNWSCreat
 int16_t Combat::CNWSCreature__GetArmorClass(CNWSCreature *thisPtr)
 {
     auto pStats = thisPtr->m_pStats;
-    char nDodgeAC = pStats->m_nACDodgeMod - pStats->m_nACDodgeNeg;
+    char nDodgeAC = (char) (pStats->m_nACDodgeMod - pStats->m_nACDodgeNeg);
     if (nDodgeAC > 20)
     {
         nDodgeAC = 20;
@@ -1981,8 +2181,9 @@ char Combat::CNWSCreatureStats__GetDEXMod(CNWSCreatureStats *thisPtr, int32_t bA
     return nDexAC;
 }
 
-int32_t Combat::CNWSCreature__GetWeaponPower(NWNXLib::API::CNWSCreature* thisPtr, CNWSObject* pTarget,
-    int32_t bOffhand) {
+int32_t Combat::CNWSCreature__GetWeaponPower(NWNXLib::API::CNWSCreature *thisPtr, CNWSObject *pTarget,
+                                             int32_t bOffhand)
+{
 
     if (thisPtr->m_appliedEffects.num < 1)
         return 0;
@@ -1997,40 +2198,51 @@ int32_t Combat::CNWSCreature__GetWeaponPower(NWNXLib::API::CNWSCreature* thisPtr
     if (nWeaponAttackType == 0)
         nWeaponAttackType = bOffhand == 0 ? 1 : 2;
 
-    CNWSItem* pAttackWeapon = nullptr;
-    if(m_overrideEnhancementBehavior) {
-        if (bOffhand) {
+    CNWSItem *pAttackWeapon = nullptr;
+    if (m_overrideEnhancementBehavior)
+    {
+        if (bOffhand)
+        {
             pAttackWeapon = GetDualwieldWeapon(thisPtr->m_pStats->m_pBaseCreature);
-        } else {
+        }
+        else
+        {
             pAttackWeapon = pCombatRound->GetCurrentAttackWeapon(0);
         }
     }
 
-    if (pTarget) {
-        CNWSCreature* pTargetCreature = Utils::AsNWSCreature(pTarget);
-        if (!pTargetCreature) {
+    if (pTarget)
+    {
+        CNWSCreature *pTargetCreature = Utils::AsNWSCreature(pTarget);
+        if (!pTargetCreature)
+        {
             auto pTargetAoe = Utils::AsNWSAreaOfEffectObject(pTarget);
             if (!pTargetAoe ||
-                !(pTargetCreature = Globals::AppManager()->m_pServerExoApp->GetCreatureByGameObjectID(pTargetAoe->m_oidCreator)) ||
-                !pTargetCreature->m_pStats) {
+                !(pTargetCreature = Globals::AppManager()->m_pServerExoApp->GetCreatureByGameObjectID(
+                    pTargetAoe->m_oidCreator)) ||
+                !pTargetCreature->m_pStats)
+            {
 
                 pTargetCreature = nullptr;
             }
         }
 
-        if(pTargetCreature) {
+        if (pTargetCreature)
+        {
             nRace = pTargetCreature->m_pStats->m_nRace;
             nAlignmentLaw = pTargetCreature->m_pStats->GetSimpleAlignmentLawChaos();
             nAlignmentGood = pTargetCreature->m_pStats->GetSimpleAlignmentGoodEvil();
         }
     }
 
-    if(!m_overrideEnhancementBehavior) {
+    if (!m_overrideEnhancementBehavior)
+    {
 
         for (int i = thisPtr->m_pStats->m_nAttackBonusPtr;
              i < thisPtr->m_appliedEffects.num &&
                  thisPtr->m_appliedEffects.element[i]->m_nType == Constants::EffectTrueType::AttackIncrease;
-             i++) {
+             i++)
+        {
 
             auto pEffect = thisPtr->m_appliedEffects.element[i];
             auto nParam0 = pEffect->GetInteger(0);
@@ -2040,10 +2252,13 @@ int32_t Combat::CNWSCreature__GetWeaponPower(NWNXLib::API::CNWSCreature* thisPtr
             auto nParam4 = pEffect->GetInteger(4);
 
             auto bCondition = nWeaponAttackType == nParam1;
-            if (nWeaponAttackType == 6) {
+            if (nWeaponAttackType == 6)
+            {
                 if (nParam1 == 1 || nParam1 == 3)
                     bCondition = true;
-            } else {
+            }
+            else
+            {
                 if (nWeaponAttackType == 8 && nParam1 == 7)
                     bCondition = true;
             }
@@ -2052,26 +2267,32 @@ int32_t Combat::CNWSCreature__GetWeaponPower(NWNXLib::API::CNWSCreature* thisPtr
                 (nParam2 == nRace || nParam2 == Constants::RacialType::All) &&
                 (nParam3 == 0 || nParam2 == (nAlignmentLaw & 0xff)) &&
                 (nParam4 == 0 || nParam3 == (nAlignmentGood & 0xff))
-                ) {
+                )
+            {
 
                 nWeaponPower = nParam0;
 
             }
         }
-    } else if(pAttackWeapon) {
+    }
+    else if (pAttackWeapon)
+    {
         //Find enhancement bonuses in weapon
-        for (int i = 0; i < pAttackWeapon->m_lstPassiveProperties.num; i++) {
+        for (int i = 0; i < pAttackWeapon->m_lstPassiveProperties.num; i++)
+        {
             auto pItemProperty = pAttackWeapon->m_lstPassiveProperties.element[i];
 
-            switch (pItemProperty.m_nPropertyName) {
+            switch (pItemProperty.m_nPropertyName)
+            {
                 case Constants::ItemProperty::EnhancementBonus:
                     if (nWeaponPower < pItemProperty.m_nCostTableValue)
                         nWeaponPower = pItemProperty.m_nCostTableValue;
                     break;
 
                 case Constants::ItemProperty::EnhancementBonusVSAlignmentGroup:
-                    if (nWeaponPower < pItemProperty.m_nCostTableValue) {
-                        if(pItemProperty.m_nSubType == nAlignmentGood || pItemProperty.m_nSubType == nAlignmentLaw)
+                    if (nWeaponPower < pItemProperty.m_nCostTableValue)
+                    {
+                        if (pItemProperty.m_nSubType == nAlignmentGood || pItemProperty.m_nSubType == nAlignmentLaw)
                             nWeaponPower = pItemProperty.m_nCostTableValue;
                     }
                     break;
@@ -2083,42 +2304,44 @@ int32_t Combat::CNWSCreature__GetWeaponPower(NWNXLib::API::CNWSCreature* thisPtr
 
                 case Constants::ItemProperty::EnhancementBonusVSSpecificAlignment:
 
-                    if (nWeaponPower < pItemProperty.m_nCostTableValue) {
-                        switch (pItemProperty.m_nSubType) {
+                    if (nWeaponPower < pItemProperty.m_nCostTableValue)
+                    {
+                        switch (pItemProperty.m_nSubType)
+                        {
                             case 0: //Lawful Good
-                                if(nAlignmentLaw == 2 && nAlignmentGood == 4)
+                                if (nAlignmentLaw == 2 && nAlignmentGood == 4)
                                     nWeaponPower = pItemProperty.m_nCostTableValue;
                                 break;
                             case 1: //Lawful Neutral
-                                if(nAlignmentLaw == 2 && nAlignmentGood == 1)
+                                if (nAlignmentLaw == 2 && nAlignmentGood == 1)
                                     nWeaponPower = pItemProperty.m_nCostTableValue;
                                 break;
                             case 2: //Lawful Evil
-                                if(nAlignmentLaw == 2 && nAlignmentGood == 5)
+                                if (nAlignmentLaw == 2 && nAlignmentGood == 5)
                                     nWeaponPower = pItemProperty.m_nCostTableValue;
                                 break;
                             case 3: //Neutral Good
-                                if(nAlignmentLaw == 1 && nAlignmentGood == 4)
+                                if (nAlignmentLaw == 1 && nAlignmentGood == 4)
                                     nWeaponPower = pItemProperty.m_nCostTableValue;
                                 break;
                             case 4: //True Neutral
-                                if(nAlignmentLaw == 1 && nAlignmentGood == 1)
+                                if (nAlignmentLaw == 1 && nAlignmentGood == 1)
                                     nWeaponPower = pItemProperty.m_nCostTableValue;
                                 break;
                             case 5: //Neutral Evil
-                                if(nAlignmentLaw == 1 && nAlignmentGood == 5)
+                                if (nAlignmentLaw == 1 && nAlignmentGood == 5)
                                     nWeaponPower = pItemProperty.m_nCostTableValue;
                                 break;
                             case 6: //Chaotic Good
-                                if(nAlignmentLaw == 3 && nAlignmentGood == 4)
+                                if (nAlignmentLaw == 3 && nAlignmentGood == 4)
                                     nWeaponPower = pItemProperty.m_nCostTableValue;
                                 break;
                             case 7: //Chaotic Neutral
-                                if(nAlignmentLaw == 3 && nAlignmentGood == 1)
+                                if (nAlignmentLaw == 3 && nAlignmentGood == 1)
                                     nWeaponPower = pItemProperty.m_nCostTableValue;
                                 break;
                             case 8: //Chaotic Evil
-                                if(nAlignmentLaw == 3 && nAlignmentGood == 5)
+                                if (nAlignmentLaw == 3 && nAlignmentGood == 5)
                                     nWeaponPower = pItemProperty.m_nCostTableValue;
                                 break;
                         }
@@ -2128,11 +2351,13 @@ int32_t Combat::CNWSCreature__GetWeaponPower(NWNXLib::API::CNWSCreature* thisPtr
         }
     }
 
-    if (nWeaponAttackType == 3 || nWeaponAttackType == 4 || nWeaponAttackType == 5) {
+    if (nWeaponAttackType == 3 || nWeaponAttackType == 4 || nWeaponAttackType == 5)
+    {
         for (int i = thisPtr->m_pStats->m_nDamageReductionPtr;
              i < thisPtr->m_appliedEffects.num &&
                  thisPtr->m_appliedEffects.element[i]->m_nType == Constants::EffectTrueType::DamageReduction;
-             i++) {
+             i++)
+        {
 
             auto nParam1 = thisPtr->m_appliedEffects.element[i]->GetInteger(1);
             if (nWeaponPower < nParam1)

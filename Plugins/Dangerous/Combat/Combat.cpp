@@ -370,7 +370,7 @@ void Combat::CNWSCreature__ResolveAttackRoll(NWNXLib::API::CNWSCreature *thisPtr
                     {"CRIT_IMMUNE", std::to_string(bImmune)});
                 messaging->BroadcastMessage("NWNX_EVENT_SIGNAL_EVENT",
                     {
-                        g_plugin->NWX_EVENT_PREFIX + "ON_CRITICAL_HIT_CHECK",
+                        g_plugin->NWNX_EVENT_PREFIX + "ON_CRITICAL_HIT_CHECK",
                         NWNXLib::Utils::ObjectIDToString(thisPtr->m_idSelf)
                     });
                 if (g_plugin->m_lastEventReturnVal != -1)
@@ -792,7 +792,7 @@ void Combat::CNWSCreature__ResolvePostRangedDamage(CNWSCreature *thisPtr, CNWSOb
                     {"CRIT_IMMUNE", std::to_string(bImmune)});
                 messaging->BroadcastMessage("NWNX_EVENT_SIGNAL_EVENT",
                     {
-                        g_plugin->NWX_EVENT_PREFIX + "ON_DEVASTATING_CRITICAL_ROLL",
+                        g_plugin->NWNX_EVENT_PREFIX + "ON_DEVASTATING_CRITICAL_ROLL",
                         NWNXLib::Utils::ObjectIDToString(thisPtr->m_idSelf)
                     });
                 nDevastatingDC = g_plugin->m_lastEventReturnVal;
@@ -963,7 +963,7 @@ void Combat::CNWSCreature__ResolveDamage(NWNXLib::API::CNWSCreature *thisPtr, NW
                     {"DEATH_ATTACK_DC", std::to_string(nDeathAttackDC)});
                 messaging->BroadcastMessage("NWNX_EVENT_SIGNAL_EVENT",
                     {
-                        g_plugin->NWX_EVENT_PREFIX + "ON_DEATH_ATTACK_ROLL", NWNXLib::Utils::ObjectIDToString
+                        g_plugin->NWNX_EVENT_PREFIX + "ON_DEATH_ATTACK_ROLL", NWNXLib::Utils::ObjectIDToString
                         (thisPtr->m_idSelf)
                     });
                 nDeathAttackDC = g_plugin->m_lastEventReturnVal;
@@ -992,7 +992,7 @@ void Combat::CNWSCreature__ResolveDamage(NWNXLib::API::CNWSCreature *thisPtr, NW
                     {"ATTACKER_ID", std::to_string(thisPtr->m_idSelf)});
                 messaging->BroadcastMessage("NWNX_EVENT_SIGNAL_EVENT",
                     {
-                        g_plugin->NWX_EVENT_PREFIX + "ON_EPIC_DODGE",
+                        g_plugin->NWNX_EVENT_PREFIX + "ON_EPIC_DODGE",
                         NWNXLib::Utils::ObjectIDToString(pTargetCreature->m_idSelf)
                     });
                 LOG_DEBUG("Dodge skipped: %d", g_plugin->m_lastEventSkipped);
@@ -1092,7 +1092,7 @@ void Combat::CNWSCreature__ResolvePostMeleeDamage(NWNXLib::API::CNWSCreature *th
                         {"CRIT_IMMUNE", std::to_string(bImmune)});
                     messaging->BroadcastMessage("NWNX_EVENT_SIGNAL_EVENT",
                         {
-                            g_plugin->NWX_EVENT_PREFIX + "ON_DEVASTATING_CRITICAL_ROLL",
+                            g_plugin->NWNX_EVENT_PREFIX + "ON_DEVASTATING_CRITICAL_ROLL",
                             NWNXLib::Utils::ObjectIDToString(thisPtr->m_idSelf)
                         });
                     nDevastatingDC = g_plugin->m_lastEventReturnVal;
@@ -1467,7 +1467,7 @@ int32_t Combat::CNWSCreatureStats__GetDamageRoll(NWNXLib::API::CNWSCreatureStats
             {"SNEAK_DAMAGE", std::to_string(nSneakAttackDamage)});
         messaging->BroadcastMessage("NWNX_EVENT_SIGNAL_EVENT",
             {
-                g_plugin->NWX_EVENT_PREFIX + "ON_GET_SNEAK_DAMAGE",
+                g_plugin->NWNX_EVENT_PREFIX + "ON_GET_SNEAK_DAMAGE",
                 NWNXLib::Utils::ObjectIDToString(thisPtr->m_pBaseCreature->m_idSelf)
             });
         nSneakAttackDamage = g_plugin->m_lastEventReturnVal;
@@ -1531,7 +1531,7 @@ int32_t Combat::CNWSCreatureStats__GetDamageRoll(NWNXLib::API::CNWSCreatureStats
             {"EXTRA_DAMAGE", std::to_string(nCriticalDamage)});
         messaging->BroadcastMessage("NWNX_EVENT_SIGNAL_EVENT",
             {
-                g_plugin->NWX_EVENT_PREFIX + "ON_GET_CRITICAL_DAMAGE",
+                g_plugin->NWNX_EVENT_PREFIX + "ON_GET_CRITICAL_DAMAGE",
                 NWNXLib::Utils::ObjectIDToString(thisPtr->m_pBaseCreature->m_idSelf)
             });
         nCriticalDamage = g_plugin->m_lastEventReturnVal;

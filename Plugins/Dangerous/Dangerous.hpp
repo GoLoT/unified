@@ -13,7 +13,7 @@ public:
     virtual ~Dangerous();
 
 private:
-    static const std::string NWX_EVENT_PREFIX;
+    static const std::string NWNX_EVENT_PREFIX;
 
     bool m_lastEventSkipped;
     int m_lastEventReturnVal;

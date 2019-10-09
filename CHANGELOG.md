@@ -1,9 +1,14 @@
-# Changelog
+# Changelog {#changelog}
+
+[TOC]
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## Unreleased
+
+https://github.com/nwnxee/unified/compare/build8186-2...HEAD
 
 NOTICE: The ABI has changed, please make sure to update your nwnx.nss and recompile all your scripts.
 
@@ -98,6 +103,7 @@ The following plugins were added:
 - Area: {Get|Set}SunMoonColors()
 - Area: CreateTransition()
 - Area: {Get|Set}TileAnimationLoop()
+- Area: TestDirectLine()
 - Chat: GetChatHearingDistance()
 - Chat: SetChatHearingDistance()
 - Creature: GetAttackBonus()
@@ -186,6 +192,7 @@ The following plugins were added:
 - Player: SetPlaceableNameOverride()
 - Player: GetQuestCompleted()
 - Player: SetPersistentLocation()
+- Player: UpdateItemName()
 - Race: SetRacialModifier()
 - Race: GetParentRace()
 - Regex: Search()
@@ -245,5 +252,3 @@ The following plugins were added:
 - Object: GetLocalVariable and GetLocalVariableCount now work with Area and Module object
 - Events: DMActionEvents now return valid TARGET event data
 - Core: Serialization now stores locals and effects for all objects, instead of only items
-
-[Unreleased]: https://github.com/nwnxee/unified/compare/build8186-2...HEAD

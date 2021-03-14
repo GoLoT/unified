@@ -35,7 +35,7 @@
 						<td id="projectlogo"><img width="80" height="74" alt="Logo" src="logo-transparent.png"/></td>
 						<td id="projectalign" style="padding-left: 0.5em;">
 							<div id="projectname">NWNX:EE
-								&#160;<span id="projectnumber">8193.20</span>
+								&#160;<span id="projectnumber">8193.21</span>
 							</div>
 						</td>
 						<td>        <div id="MSearchBox" class="MSearchBoxInactive">
@@ -375,6 +375,9 @@ $(document).ready(function(){initNavTree('globals_func_n.html',''); initResizabl
 <li>NWNX_Creature_DoPerceptionUpdateOnCreature()
 : <a class="el" href="group__creature.html#ga07ef1d837354f127b72d7d301555c857">nwnx_creature.nss</a>
 </li>
+<li>NWNX_Creature_GetArmorCheckPenalty()
+: <a class="el" href="group__creature.html#ga1300b28822e4534d0210593c8e65042c">nwnx_creature.nss</a>
+</li>
 <li>NWNX_Creature_GetArmorClassVersus()
 : <a class="el" href="group__creature.html#gacd4022d011b84e8b015b4bbe5abca7fa">nwnx_creature.nss</a>
 </li>
@@ -389,6 +392,9 @@ $(document).ready(function(){initNavTree('globals_func_n.html',''); initResizabl
 </li>
 <li>NWNX_Creature_GetBaseSavingThrow()
 : <a class="el" href="group__creature.html#gaec44d5608a8adeb007c901425cfd92f8">nwnx_creature.nss</a>
+</li>
+<li>NWNX_Creature_GetBypassEffectImmunity()
+: <a class="el" href="group__creature.html#ga3e559430fbdbd5bf1d8de42a9c1fbac0">nwnx_creature.nss</a>
 </li>
 <li>NWNX_Creature_GetCasterLevelModifier()
 : <a class="el" href="group__creature.html#gab29a65c34e82a3f565551a6d706179db">nwnx_creature.nss</a>
@@ -516,6 +522,9 @@ $(document).ready(function(){initNavTree('globals_func_n.html',''); initResizabl
 <li>NWNX_Creature_GetRemainingSpellSlots()
 : <a class="el" href="group__creature.html#gacb4f736a792fe146e85ae56e147db0ad">nwnx_creature.nss</a>
 </li>
+<li>NWNX_Creature_GetShieldCheckPenalty()
+: <a class="el" href="group__creature.html#ga6f6d31fc7c93583af61cc9c8f884d844">nwnx_creature.nss</a>
+</li>
 <li>NWNX_Creature_GetSkillPointsRemaining()
 : <a class="el" href="group__creature.html#ga926e85f71e7f8373b312e7a41782d356">nwnx_creature.nss</a>
 </li>
@@ -599,6 +608,9 @@ $(document).ready(function(){initNavTree('globals_func_n.html',''); initResizabl
 </li>
 <li>NWNX_Creature_SetBaseSavingThrow()
 : <a class="el" href="group__creature.html#ga6a50f09f77b3dd53a49b2e68ebf75547">nwnx_creature.nss</a>
+</li>
+<li>NWNX_Creature_SetBypassEffectImmunity()
+: <a class="el" href="group__creature.html#gaf2ca9b1aca1f674b70e858b5279521f9">nwnx_creature.nss</a>
 </li>
 <li>NWNX_Creature_SetCasterLevelModifier()
 : <a class="el" href="group__creature.html#ga007d581a39d037dce04fdfa034427efd">nwnx_creature.nss</a>
@@ -885,11 +897,23 @@ $(document).ready(function(){initNavTree('globals_func_n.html',''); initResizabl
 <li>NWNX_Effect_GetEffectExpiredData()
 : <a class="el" href="group__effect.html#gabb4f9e4e4b8315cda42c1e7dc4d2dff3">nwnx_effect.nss</a>
 </li>
+<li>NWNX_Effect_GetTrueEffect()
+: <a class="el" href="group__effect.html#ga2e0dcb3e029747151deefd63cbcb1197">nwnx_effect.nss</a>
+</li>
+<li>NWNX_Effect_GetTrueEffectCount()
+: <a class="el" href="group__effect.html#gad5ee5799b1d4ce82fb0f28a602152739">nwnx_effect.nss</a>
+</li>
 <li>NWNX_Effect_PackEffect()
 : <a class="el" href="group__effect.html#ga8c7e4f71ab7b12105e5051ec90e9fd2e">nwnx_effect.nss</a>
 </li>
+<li>NWNX_Effect_RemoveEffectById()
+: <a class="el" href="group__effect.html#ga81207d2dfad9c4733ce803bad36b534f">nwnx_effect.nss</a>
+</li>
 <li>NWNX_Effect_ReplaceEffect()
 : <a class="el" href="group__effect.html#gab4c4af97dfa245d6774c2d6cdccd720b">nwnx_effect.nss</a>
+</li>
+<li>NWNX_Effect_ReplaceEffectByIndex()
+: <a class="el" href="group__effect.html#gae8ddfbe898a7449551e3a6cf53c64f8c">nwnx_effect.nss</a>
 </li>
 <li>NWNX_Effect_SetEffectExpiredScript()
 : <a class="el" href="group__effect.html#ga3c6b1b67f4bd4332f8b2b4fdf8217aec">nwnx_effect.nss</a>
@@ -1125,6 +1149,9 @@ $(document).ready(function(){initNavTree('globals_func_n.html',''); initResizabl
 <li>NWNX_Lua_RunEvent()
 : <a class="el" href="group__lua.html#ga5a16247c28d75f20ccdefbd517cf557b">nwnx_lua.nss</a>
 </li>
+<li>NWNX_NoStack_SetSpellBonusType()
+: <a class="el" href="group__nostack.html#gab58506b6c8bd6a1d1f00797a1a7925d8">nwnx_nostack.nss</a>
+</li>
 <li>NWNX_Object_AcquireItem()
 : <a class="el" href="group__object.html#gabac51683829dcd5e2898b1e072d2b760">nwnx_object.nss</a>
 </li>
@@ -1162,7 +1189,7 @@ $(document).ready(function(){initNavTree('globals_func_n.html',''); initResizabl
 : <a class="el" href="group__object.html#ga0543152520c56d3c3d3d724a38409f7d">nwnx_object.nss</a>
 </li>
 <li>NWNX_Object_Export()
-: <a class="el" href="group__object.html#ga091bdd0e7c99ed5254ca138db05d7156">nwnx_object.nss</a>
+: <a class="el" href="group__object.html#ga248baa30ff85960bf6b559554125fff4">nwnx_object.nss</a>
 </li>
 <li>NWNX_Object_GetAILevel()
 : <a class="el" href="group__object.html#ga73c0bae422bd3bc0f8dc1fbcfeeecdce">nwnx_object.nss</a>
@@ -1451,6 +1478,9 @@ $(document).ready(function(){initNavTree('globals_func_n.html',''); initResizabl
 </li>
 <li>NWNX_Player_SetSpawnLocation()
 : <a class="el" href="group__player.html#ga9ee3f2a0e9d42efced12e3992e366a4a">nwnx_player.nss</a>
+</li>
+<li>NWNX_Player_SetTlkOverride()
+: <a class="el" href="group__player.html#gac1e82d1407aa32ddbcbe2c8822a0fa8a">nwnx_player.nss</a>
 </li>
 <li>NWNX_Player_ShowVisualEffect()
 : <a class="el" href="group__player.html#ga237db89fac702f2b9f404a33c63e7b93">nwnx_player.nss</a>
@@ -2572,7 +2602,7 @@ $(document).ready(function(){initNavTree('globals_func_n.html',''); initResizabl
 		<div id="nav-path" class="navpath"><!-- id is needed for treeview function! -->
 			<ul>
 				<li class="footer">
-					Generated on Thu Mar 11 2021 22:35:11 for NWNX:EE by <a href="http://www.doxygen.org/index.html">
+					Generated on Sun Mar 14 2021 19:44:56 for NWNX:EE by <a href="http://www.doxygen.org/index.html">
 					<img class="footer" src="doxygen.png" alt="doxygen"/></a> 1.8.17.
 					<a href="../">Light version</a>
 				</li>
